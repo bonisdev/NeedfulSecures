@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Securely Connected, Sirs</title>
+        <link rel="stylesheet" type="text/css" href="/style.css">
+    </head> 
+
+    <body>
+        <script type="text/javascript" src="bundle.js"></script>
+        <script type="text/javascript" src="aes.js"></script>
+        <script type="text/javascript" src="PseudRand.js"></script>
+
+        <div id="myModal" class="modal">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <input class="inname" id="initialRoomKey" placeholder="room key" type="password" >
+                <button tabindex="-1" onclick="initialConnect()">connect</button>
+                
+                <p class="smr info-area">
+                    maybe the "<span class="key-info">public</span>" room key has been used before?
+                </p>
+            </div>
+        </div>
+        <div id="overlay"></div>
+         
+        <div id="exactHeader" class="header choose-a-room" onclick="toggleOptions()">enter a room key</div>
+        <div class="hidden" id="options">
+            <div class="content-main">
+                <p> hello, pleaesd to be assisting you in an open source discord software: <span id="userIdArea"></span> </p>
+                <ul>
+                    <li>End-to-End encryprion without SSL or any trusted intermediaries using <a href="https://www.npmjs.com/package/crypto-js">crypto-js</a>, <a href="https://www.npmjs.com/package/elliptic">elliptic</a>, and <a href="https://www.npmjs.com/package/sha3">sha3</a></li>
+                    <li>no account creation required</li>
+                    <li>open source + easily auditable <a href="https://github.com/bonisdev/NeedfulSecures">https://github.com/bonisdev/NeedfulSecures</a></li>
+                    <li>shares any file, renders text and images in browser</li>
+                    <li>font end customization including client-side bot programming using <a href="https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Using_web_workers">Web Workers</a></li>
+                </ul> 
+                <hr>
+                
+                <p> enter a <span class="choose-a-room key-info">room key</span> (can be any string)</p> 
+                <input class="inname" id="roomkey" placeholder="room key" type="password" >
+                <button tabindex="-1" onclick="initialConnect()">connect</button>
+                <div class="scrt-mtc-cntnr">
+                    <p id="displayRoomKeyAs"></p>
+                </div>
+                <label class="container">store in cache
+                    <input disabled id="storeRoomKeyInCache" type="checkbox" >
+                    <span class="checkmark"></span>
+                </label>
+                <label class="container">send IP in messages
+                    <input disabled id="storeSendIPInCache" type="checkbox" >
+                    <span class="checkmark"></span>
+                </label>
+                <p class="smr info-area">
+                    each room stores the last 64,000,000 bytes of data in text, or img format. All rooms can have their encrypted messages seen publicly, but can only be decrypted if you have the <span class="key-info">room key</span>.  Perhaps someone has used the key: "<span class="key-info-2">general</span>"?
+                </p>
+
+                <p> <span class="warning-area">(optional)</span> search for a room key that will produce a specific display name (searches the first 16 of the 32 chars of your room's public key) </p> 
+                <input class="inname little-word-generator" id="regexVal_room" value="" placeholder="custom string (recommend: <4 chars long)" type="text" >
+                <button id="startSeekButton_room" class="spinner-button seeking-button" onclick="seek(0)" tabindex="-1">seek</button>
+                <div class="scrt-mtc-cntnr">
+                    <p id="secretMatch_room"></p>
+                </div>
+    
+                <br>
+                <hr>
+                <br>
+                
+                <p> <span class="warning-area">(optional)</span> add a cosmetic user name identifier to sign all your messages with so others in the room can easily identify your messages</p> 
+                <input class="inname" id="whisperkey" placeholder="user secret" type="password" >
+                <button tabindex="-1" onclick="setName()">set</button>
+                <div class="scrt-mtc-cntnr">
+                    <p id="displayUserKeyAs"></p>
+                </div>
+                <label class="container">store in cache
+                    <input disabled id="storeUsernameInCache" type="checkbox" >
+                    <span class="checkmark"></span>
+                </label>
+                <p class="smr info-area"> this username is also hidden to actors without the room key <span class="key-info">room key</span></p>
+     
+                
+                <p> <span class="warning-area">(optional)</span> search for a user key that will produce a specific display name (searches the first 16 of the 32 chars of your user's public key) </p> 
+                <input class="inname little-word-generator" id="regexVal_user" value="joe" placeholder="custom string (recommend: <4 chars long)" type="text" >
+                <button id="startSeekButton_user" class="spinner-button seeking-button" onclick="seek(1)" tabindex="-1">seek</button>
+                <div class="scrt-mtc-cntnr">
+                    <p id="secretMatch_user"></p>
+                </div>
+            </div>
+        </div>
+        <div class="message-container" id="messageContainer"></div>
+        <div class="input-container">
+            <input type="text" id="messageInput" placeholder="Type your message...">
+            <button id="postButton" onclick="sendMessage()" tabindex="-1">post</button>
+        </div>
+
+        
+ 
+        <script type="text/javascript" src="client_manager.js"></script>
+        <script type="text/javascript" src="client_modal.js"></script>
+
+        <script>
+
+            // If you make a clone of this repo change this number to whatever
+            // you want your custom engine to not collide with this (can be any string)
+            var VERSION_NUMBER = 1;
+            var TIME_REQUEST_START = 0;
+            var TIME_OFFSET = 0;
+            // Is it secure to keep these variables here?
+            var PUBLIC_ROOM = "";
+            var ENC_SEED = "";
+            ENC_SEED = "191a89300a7d8f2c6cab2f1e37953aca863f57b62d52e2ff96c05a39b6411895c";// i think this is the 'general'
+
+            var USER_SEED = "";
+
+            var rkey = "";
+
+            var msgCoolingDown = false;
+            var msgCoolDownTimer = 350;
+
+            var DAURL = 'http://localhost:80';//'http://needfulsecures.ca';//
+
+            
+            let perfectRandomTest = new CustomRandom_sha( 'hellobozo' );
+            console.log('perfectRandomTest', perfectRandomTest.nextHash());
+
+            openModal();
+            
+            function initialConnect(){
+                connect( 0 );
+                closeModal();
+            }
+            
+            function sendMessage() {
+                if( !msgCoolingDown) connect( 1 );
+            }
+
+            function getServerTimin(){
+                let fff = DAURL + '/tget';  
+                let requestOptions = {
+                    method: 'GET',
+                };
+                TIME_REQUEST_START = Date.now();
+                // Send the POST request
+                fetch(fff, requestOptions)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Network response was not ok');
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        let ddd = Date.now();
+                        TIME_OFFSET = (Math.floor((ddd-TIME_REQUEST_START)/2) + data.t) - ddd;
+                        console.log(TIME_OFFSET)
+                    })
+                    .catch(error => {
+                        console.error('There was a problem with the fetch operation timr:', error);
+                    });
+            }
+
+
+            // Send type
+            function connect( stype ){
+                let lastM = '';
+
+                let typeOfMessage = 0+stype;  //type=0=> no post just want an update
+                                        //type=1=> text post
+                                        //type=2=> image file
+                                        //type=3=> sound file type
+                                        //type=4=> any other file type
+                                  
+                // Quick check to switch value to checking
+                var messin = document.getElementById('messageInput');
+                lastM = ''+messin.value;
+                messin.value = ''; 
+
+
+                // INITIAL CONNECT? I GUESS?!
+                if( stype === 0 ){
+
+                    // Get the possilbe rKeys
+                    rkey = document.getElementById( 'roomkey' ).value;
+                    let othrkey = document.getElementById( 'initialRoomKey' ).value;
+                    // Only update this part if one of them has changed and ur doin a weird ENTER update from the messageINput element
+                    if( othrkey.length > 0 || rkey.length > 0 ){
+                        if( othrkey.length > rkey.length){
+                            rkey = othrkey;
+                        }
+                        ENC_SEED = VERSION_NUMBER.toString() + (new CustomRandom_sha( rkey )).nextHash();
+                    } 
+                    //console.log(ENC_SEED)
+
+                     
+                    //document.getElementById('displayRoomKeyAs').innerHTML = '<br>will display as:<br>' + 
+                    //    '<span class=\"you-area\">' + getDisplayedSeed(ENC_SEED) + '</span>';
+                        
+                    document.getElementById('displayRoomKeyAs').innerHTML =  '<br>public cosmeticized key:<br>' + 
+                        '<span class=\"you-area\">' + getDisplayedSeed( ENC_SEED ) + '</span><br>public full key:<br>' + 
+                        '<span class=\"you-area\">' + getThePublicHex( ENC_SEED ) + '</span>';
+
+
+                    // Two possible inputs for the room key set them empty again
+                    document.getElementById( 'roomkey' ).value = '';
+                    document.getElementById( 'initialRoomKey' ).value = '';
+                    setTimeout(function() {
+                        var mesin = document.getElementById("messageInput");
+                        if (mesin) {
+                            mesin.focus();
+                            mesin.select(); 
+                        }
+                    }, 145);
+                }
+                else if( stype === 1 ){
+                    // msgCoolingDown = true;
+                    //// messin.disabled = true; 
+                    // setTimeout(function() {
+                    //     let minput = document.getElementById("messageInput");
+                    //     if (minput) {
+                    //         minput.focus();
+                    //         minput.select(); 
+                    //     }
+                    // }, 45);
+                    // setTimeout(function() {
+                    //     msgCoolingDown = false;
+                    //     //document.getElementById('messageInput').disabled = false;
+                    // }, msgCoolDownTimer);
+                    typeOfMessage = 1;// set to text
+
+                    if( lastM.length < 1 ){
+                        return;
+                    }
+                }
+                
+                // Image?
+                else if( stype === 2 ){
+
+                }
+                
+
+
+                let whitelistkey = "9f9f9f9f99f9f9f9ffd";
+                let timeSent = TIME_OFFSET + Date.now()
+                let randomNonce = ''+timeSent+":"+Math.random();
+                let message = ''+lastM;//"Helloo IIIhIIII how's it goinnn?!??!";
+                let key = CHelper__B.ec.keyFromSecret( ENC_SEED );
+                let pub = key.getPublic(); 
+
+                let b64Str = stringToBase64(message)
+                
+
+                // Example JSON data to send
+                let jsonDataToSend = {
+                    tmsent: timeSent,
+                    rnnce: randomNonce,
+                    msg: ""+initEncryption( ENC_SEED, b64Str ),
+                    pgn: 0, //pagination (the last 30 before this)
+                    type: typeOfMessage,
+                    room: pub//PUBLIC_ROOM
+                };
+
+
+                let digseiotns = 
+                    '' + 
+                    jsonDataToSend.tmsent + 
+                    jsonDataToSend.rnnce + 
+                    jsonDataToSend.msg +
+                    jsonDataToSend.pgn +
+                    jsonDataToSend.type;
+                console.log( 'digestions', digseiotns );
+                // Whatever needful secures version you're requesting must have
+                // the same hashing process to ensure syncornization
+                jsonDataToSend.msghash = 
+                    (new CustomRandom_sha( 
+                        digseiotns
+                    )).nextHash();
+                console.log('jsonDataToSend.msghash', jsonDataToSend.msghash);
+                jsonDataToSend.sig = key.sign(jsonDataToSend.msghash).toHex();
+
+
+                // INTERLUDE JSUT CHECK IF SIGN SIN WORKS 
+                // let justTest = attemptDecrypt( ENC_SEED, jsonDataToSend.msg );
+                // console.log( 'decrypted val:', justTest )
+                
+                // var key2 = CHelper__B.ec.keyFromPublic(pub, 'hex');
+                // console.log(key2.verify(jsonDataToSend.msgHash, jsonDataToSend.sig));
+                
+                const url = DAURL + '/trib';  
+                const requestOptions = {
+                    method: 'POST',  headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(jsonDataToSend)
+                };
+                // Send the POST request
+                fetch(url, requestOptions)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Network response was not ok');
+                        }
+                        return response.json(); // Parse JSON response
+                    })
+                    .then(data => {
+                        lastM='';
+                        console.log('Response from server:', data); // Handle the JSON response
+                        gentlyUpdateMessages( data );
+                    })
+                    .catch(error => {
+                        lastM=''; console.error('There was a problem with the fetch operation:', error);
+                    });
+
+                 
+                
+
+                
+            }
+
+
+            // Helper functions
+			function attemptDecrypt(daKey, damst){
+				var decryptedBytes = CryptoJS.AES.decrypt(damst, daKey);
+				var plaintext = decryptedBytes.toString(CryptoJS.enc.Utf8);
+                return plaintext;
+			}
+			function initEncryption(daKey, daMessg){
+				var encryptedAES = CryptoJS.AES.encrypt(daMessg, daKey );
+                return encryptedAES;
+				
+			}
+            function hexStringToUint8Array(hexString) {
+                if (hexString.length % 2 !== 0) {
+                    throw new Error("Invalid hex string");
+                }
+                const byteArray = new Uint8Array(hexString.length / 2);
+                for (let i = 0; i < hexString.length; i += 2) {
+                    byteArray[i / 2] = parseInt(hexString.substr(i, 2), 16);
+                }
+            
+                return byteArray;
+            }
+            function hexStringToByteArray(hexString) {
+                // Ensure the input string has an even length
+                if (hexString.length % 2 !== 0) {
+                    throw new Error("Invalid hex string");
+                } 
+                const byteArray = [];
+                for (let i = 0; i < hexString.length; i += 2) {
+                    // Convert each pair of hex characters to a decimal number
+                    const byte = parseInt(hexString.substr(i, 2), 16);
+                    byteArray.push(byte);
+                } 
+                return byteArray;
+            }
+            function uint8ArrayToHexString(uint8Array) {
+                return Array.prototype.map.call(uint8Array, function(byte) {
+                    return ('0' + byte.toString(16)).slice(-2);
+                }).join('');
+            }
+            function setName(){
+                let valem = document.getElementById('whisperkey'); 
+                USER_SEED = ""+(new CustomRandom_sha( ''+valem.value )).nextHash(); 
+                console.log('USER_SEED: '+USER_SEED);
+
+                document.getElementById('displayUserKeyAs').innerHTML =  '<br>cosmeticized client version:<br>' + 
+                    '<span class=\"you-area\">' + getDisplayedSeed( USER_SEED ) + '</span><br>full value:<br>' + 
+                    '<span class=\"you-area\">' + getThePublicHex( USER_SEED ) + '</span>';
+            }
+            function convertArrayToAscii(array) { 
+                return array.map(num => String.fromCharCode(num)).join('');
+            }
+            function convertArrayTo_TRUE_Ascii(array) {
+                console.log(array)
+                return array.map( num => String.fromCharCode(Number(num)%256) ).join('');
+            }
+            function convertArrayTo_FINAL_Ascii(array, charmap) { 
+                let asciiString = '';
+                for (let i = 0; i < array.length; i++) { 
+                    asciiString += charmap[array[i]%charmap.length];
+                }
+                return asciiString;
+            }
+            function convertCharToAscii(character) {
+                const asciiValue = character.charCodeAt(0) % 256;
+                return String.fromCharCode(asciiValue);
+            }
+            function filterOutBadChars(stringArray, charmap){
+                let asciiString = '';
+                for (let i = 0; i < stringArray.length; i++) { 
+                    asciiString += charmap.indexOf( stringArray.charAt(i) ) > -1 ? stringArray.charAt(i) : '';//charmap[array[i]%charmap.length];
+                }
+                return asciiString;
+            }
+            function convertUint8ArrayToAscii(uint8Array) {
+                if (!(uint8Array instanceof Uint8Array) || uint8Array.length !== 32) {
+                    throw new Error("Input must be a Uint8Array of size 32");
+                }
+                return String.fromCharCode(...uint8Array);
+            }
+            function stringToBase64(str) {
+                const utf8Bytes = new TextEncoder().encode(str);
+                return btoa(String.fromCharCode.apply(null, utf8Bytes));
+            }
+            function base64ToString(base64) {
+                const byteString = atob(base64);
+                const utf8Bytes = new Uint8Array(byteString.length);
+                for (let i = 0; i < byteString.length; i++) {
+                    utf8Bytes[i] = byteString.charCodeAt(i);
+                }
+                return new TextDecoder().decode(utf8Bytes);
+            }
+
+            function setCookie(name, value, daysToLive) {
+                let cookie = name + '=' + encodeURIComponent(value);
+                if (daysToLive) {
+                    const expirationDate = new Date();
+                    expirationDate.setTime(expirationDate.getTime() + (daysToLive * 24 * 60 * 60 * 1000));
+                    cookie += ';expires=' + expirationDate.toUTCString();
+                }
+                document.cookie = cookie;
+            }
+            function getCookie(name) {
+                const cookies = document.cookie.split(';');
+                for (let cookie of cookies) {
+                    const [cookieName, cookieValue] = cookie.trim().split('=');
+                    if (cookieName === name) {
+                        return decodeURIComponent(cookieValue);
+                    }
+                }
+                return null;
+            }
+
+
+
+
+            // Add event handlers for super user activities
+            document.addEventListener("DOMContentLoaded", function() {
+
+                var messinput = document.getElementById("messageInput");
+                messinput.addEventListener("keypress", function(event) {
+                    
+                    if (event.key === 'Tab') {
+                        
+                        // TODO this doesn't work anymore
+                        
+                        //event.preventDefault();
+                        //let options = document.getElementById('options');
+                        //console.log('sdf', options.classList.contains('hidden'))
+                        //if (options.classList.contains('hidden')) { 
+                        //    toggleOptions();
+                        //} 
+                        //let roomInput = document.getElementById("roomkey");
+                        //roomInput.focus();
+                        //roomInput.select(); 
+                        
+                    }
+                    else if (event.key === "Enter") {
+                        event.preventDefault();
+                        toggleOptions('just close it');
+                        sendMessage();
+                    }
+                }); 
+
+                let roomInput = document.getElementById("roomkey");
+                if (roomInput) {
+                    roomInput.addEventListener("keypress", function(event) {
+                        if (event.key === "Enter") {
+                            event.preventDefault();
+                            initialConnect();
+                        }
+                    });
+                    roomInput.addEventListener('focus', function() { 
+                    });
+                }
+                let userINput = document.getElementById("whisperkey");
+                if (userINput) {
+                    userINput.addEventListener("keypress", function(event) {
+                        if (event.key === "Enter") {
+                            event.preventDefault();
+                            setName();
+                        }
+                    });
+                }
+
+                let seeken = document.getElementById('regexVal_room');
+                if (seeken) {
+                    seeken.addEventListener("keypress", function(event) {
+                        if (event.key === "Enter") {
+                            event.preventDefault();
+                            seek(0)
+                        }
+                    });
+                }
+
+                let seekuseren = document.getElementById('regexVal_user');
+                if (seekuseren) {
+                    seekuseren.addEventListener("keypress", function(event) {
+                        if (event.key === "Enter") {
+                            event.preventDefault();
+                            seek(1)
+                        }
+                    });
+                }
+ 
+
+                setTimeout(function() {
+                    getServerTimin();
+                    var passwordInput = document.getElementById("initialRoomKey");
+                    if (passwordInput) {
+                        passwordInput.focus();
+                        passwordInput.select();
+
+                        passwordInput.addEventListener("keypress", function(event) {
+                            if (event.key === "Enter") {
+                                event.preventDefault();
+                                initialConnect();
+                            }
+                        });
+                    }
+                }, 100);
+            });
+          
+
+        </script>
+    </body>
+</html>
